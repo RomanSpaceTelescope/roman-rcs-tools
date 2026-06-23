@@ -22,63 +22,53 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CALIBRATION_FILE = os.path.join(SCRIPT_DIR, '260401_sRCS_WFI_Calibration_flux_led.xlsx')
 
 # Load calibration data on import
+_cmd_curve = namedtuple('Curve', ['m', 'b'])
+
 def _load_calibration():
-    """Load flux calibration from Excel file."""
+    """Load flux and current calibration from Excel file."""
     if not os.path.exists(CALIBRATION_FILE):
         raise FileNotFoundError(f"Calibration file not found: {CALIBRATION_FILE}")
 
-    df = pd.read_excel(CALIBRATION_FILE, sheet_name="H4RG Flux Calibration")
+    # Load flux calibration
+    df_flux = pd.read_excel(CALIBRATION_FILE, sheet_name="H4RG Flux Calibration")
+    df_led = pd.read_excel(CALIBRATION_FILE, sheet_name="LED Calibration")
 
-    # Organize into nested dict
-    cal_data = {}
+    # Organize flux data into nested dict
+    flux_data = {}
     for side in ['A', 'B']:
         box = 1 if side == 'A' else 2
-        cal_data[side] = {}
+        flux_data[side] = {}
 
         for band in [4, 5, 6]:
             for bank in [1, 2]:
-                row = df[(df.band == band) & (df.box == box) & (df.bank == bank)]
+                row = df_flux[(df_flux.band == band) & (df_flux.box == box) & (df_flux.bank == bank)]
                 if len(row) > 0:
-                    cal_data[side][band] = row.iloc[0].to_dict()
+                    flux_data[side][band] = row.iloc[0].to_dict()
 
-    return cal_data
+    # Organize current curves from LED calibration
+    current_curves = {}
+    for side in ['A', 'B']:
+        box = 1 if side == 'A' else 2
+        current_curves[side] = {}
+
+        for bank in [1, 2]:
+            row = df_led[(df_led.box == box) & (df_led.bank == bank)]
+            if len(row) > 0:
+                data = row.iloc[0]
+                current_curves[side][bank] = {
+                    'high': _cmd_curve(data['high m'], data['high b']),
+                    'low': _cmd_curve(data['low m'], data['low b']),
+                }
+
+    return flux_data, current_curves
 
 try:
-    CALIBRATION_DATA = _load_calibration()
+    CALIBRATION_DATA, CURRENT_CURVES = _load_calibration()
 except Exception as e:
     print(f"Warning: Could not load calibration file: {e}", file=sys.stderr)
     print("Using fallback calibration data", file=sys.stderr)
     CALIBRATION_DATA = {}
-
-# Current-to-code calibration curves
-_cmd_curve = namedtuple('Curve', ['m', 'b'])
-
-CURRENT_CURVES = {
-    'A': {
-        1: {
-            'high': _cmd_curve(683507.4843, 65462.8064),
-            'low': _cmd_curve(273944015.3, -76.47924149),
-            'ultralow': _cmd_curve(253674929.9, 164.1452529)
-        },
-        2: {
-            'high': _cmd_curve(684726.3488, 65387.38867),
-            'low': _cmd_curve(274525613.8, -147.0222373),
-            'ultralow': _cmd_curve(247294249, 83.70018248)
-        }
-    },
-    'B': {
-        1: {
-            'high': _cmd_curve(685056.77, 65382.47331),
-            'low': _cmd_curve(274557986.4, -153.1971136),
-            'ultralow': _cmd_curve(243116093.8, 93.3474194)
-        },
-        2: {
-            'high': _cmd_curve(685523.0879, 65347.46843),
-            'low': _cmd_curve(274952369.8, -166.1840521),
-            'ultralow': _cmd_curve(245341211.5, 32.21601601)
-        }
-    }
-}
+    CURRENT_CURVES = {}
 
 
 def hex_to_current(side, bank, code):
