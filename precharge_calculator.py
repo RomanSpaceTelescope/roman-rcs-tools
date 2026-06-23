@@ -33,17 +33,18 @@ def _load_calibration():
     df_flux = pd.read_excel(CALIBRATION_FILE, sheet_name="H4RG Flux Calibration")
     df_led = pd.read_excel(CALIBRATION_FILE, sheet_name="LED Calibration")
 
-    # Organize flux data into nested dict
+    # Organize flux data into nested dict: side → band → bank → calibration
     flux_data = {}
     for side in ['A', 'B']:
         box = 1 if side == 'A' else 2
         flux_data[side] = {}
 
         for band in [4, 5, 6]:
+            flux_data[side][band] = {}
             for bank in [1, 2]:
                 row = df_flux[(df_flux.band == band) & (df_flux.box == box) & (df_flux.bank == bank)]
                 if len(row) > 0:
-                    flux_data[side][band] = row.iloc[0].to_dict()
+                    flux_data[side][band][bank] = row.iloc[0].to_dict()
 
     # Organize current curves from LED calibration
     current_curves = {}
@@ -102,8 +103,7 @@ def current_to_hex(side, bank, current):
 
 def get_flux_calibration(side, band, bank):
     """Get flux calibration coefficients for a given configuration."""
-    box = 1 if side.upper() == 'A' else 2
-    return CALIBRATION_DATA[side.upper()][band]
+    return CALIBRATION_DATA[side.upper()][band][bank]
 
 
 def flux_to_code(side, band, bank, flux, raise_corner_case=True):
